@@ -36,6 +36,11 @@ let client = WechatPay.H5API(wechatPay: wechatPay)
 let h5Response = try await client.prepayWithRequestPayment(request: request)
 ```
 
+## Cert
+
+- 下载微信平台证书 downloadCertificates
+- 解密证书内容 decodeCert
+
 ## H5API 
 
 - 预下单 prepayWithRequestPayment
