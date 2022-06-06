@@ -22,9 +22,11 @@ extension WechatPay {
         /// 预下单
         public func prepayWithRequestPayment(request: WechatPay.H5API.PrepayRequest) async throws -> DataResponse<OrderResponse, AFError> {
         
+            let entry = WechatPayAPIEntry.h5Order
+            
             let response = await AF.request(
-                "\(WechatPayURL.host)\(WechatPayAPIEntry.h5Order.path)",
-                method: WechatPayAPIEntry.h5Order.method,
+                "\(entry.absolutePath)",
+                method: entry.method,
                 parameters: request,
                 encoder: JSONParameterEncoder.default,
                 interceptor: self.wechatPay.interceptor
@@ -39,9 +41,11 @@ extension WechatPay {
             let decoder = JSONDecoder()
             decoder.dateDecodingStrategy = .iso8601
             
+            let entry = WechatPayAPIEntry.transactionWithTradeNo
+            
             let response = await AF.request(
-                "\(WechatPayURL.host)\(WechatPayAPIEntry.transactionWithTradeNo.path)/\(tradeNo)?mchid=\(self.wechatPay.mchid)",
-                method: WechatPayAPIEntry.transactionWithTradeNo.method,
+                "\(entry.absolutePath)/\(tradeNo)?mchid=\(self.wechatPay.mchid)",
+                method: entry.method,
                 interceptor: self.wechatPay.interceptor
             ).validate(wechatPay.validator.validation).serializingDecodable(WechatPay.H5API.Transaction.self, decoder: decoder).response
             

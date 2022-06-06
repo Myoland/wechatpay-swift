@@ -14,6 +14,8 @@ enum WechatPayAPIEntry {
     case h5Order
     case transactionWithTradeNo
     
+    static let host = "https://api.mch.weixin.qq.com/v3"
+    
     var path: String {
         switch self {
         case .downloadCertificates:
@@ -23,6 +25,10 @@ enum WechatPayAPIEntry {
         case .transactionWithTradeNo:
             return "/pay/transactions/out-trade-no"
         }
+    }
+    
+    var absolutePath: String {
+        return WechatPayAPIEntry.host + self.path
     }
     
     var method: Alamofire.HTTPMethod {
@@ -35,10 +41,6 @@ enum WechatPayAPIEntry {
             return .get
         }
     }
-}
-
-struct WechatPayURL {
-    static let host: String = "https://api.mch.weixin.qq.com/v3"
 }
 
 public struct WechatPay {

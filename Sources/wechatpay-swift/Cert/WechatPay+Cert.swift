@@ -16,9 +16,11 @@ extension WechatPay {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
         
+        let entry = WechatPayAPIEntry.downloadCertificates
+        
         let response = await AF.request(
-            "\(WechatPayURL.host)\(WechatPayAPIEntry.downloadCertificates.path)",
-            method: WechatPayAPIEntry.downloadCertificates.method,
+            "\(entry.absolutePath)",
+            method: entry.method,
             interceptor: self.interceptor
         ).validate(self.validator.validation).serializingDecodable(WechatCertificateResponse.self, decoder: decoder).response
         
