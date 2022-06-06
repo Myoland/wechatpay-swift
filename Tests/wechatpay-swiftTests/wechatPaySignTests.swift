@@ -36,7 +36,9 @@ final class wechatpaySignTests: XCTestCase {
             notifyURL: Environment.get("NOTIFY_URL") ?? "",
             amount:  WechatPay.H5API.PrepayRequest.Amount(total: 6800),
             appid: Environment.get("TEST_APPID") ?? "",
-            sceneInfo:  WechatPay.H5API.PrepayRequest.SceneInfo(payerClientIp: "127.0.0.1", h5Info: WechatPay.H5API.PrepayRequest.SceneInfo.H5Info(type: "Wap")))
+            sceneInfo:  WechatPay.H5API.PrepayRequest.SceneInfo(
+                payerClientIp: "127.0.0.1",
+                h5Info: WechatPay.H5API.PrepayRequest.SceneInfo.H5Info(type: "Wap")))
         
         let client = WechatPay.H5API(wechatPay: wechatPay)
         
