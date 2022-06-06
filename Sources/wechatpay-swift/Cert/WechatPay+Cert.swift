@@ -13,16 +13,12 @@ extension WechatPay {
     /// 下载微信平台证书
     func downloadCertificates() async throws -> DataResponse<WechatCertificateResponse, AFError> {
         
-        let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .iso8601
-        
         let entry = WechatPayAPIEntry.downloadCertificates
         
-        let response = await AF.request(
+        let response = await self.client.request(
             "\(entry.absolutePath)",
-            method: entry.method,
-            interceptor: self.interceptor
-        ).validate(self.validator.validation).serializingDecodable(WechatCertificateResponse.self, decoder: decoder).response
+            method: entry.method
+        ).validate(self.validator.validation).serializingDecodable(WechatCertificateResponse.self, decoder: self.decoder).response
         
         return response
     }

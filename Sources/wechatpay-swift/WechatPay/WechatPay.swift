@@ -55,9 +55,10 @@ public struct WechatPay {
     /// 商户证书序列号
     public let serialNo: String
     
-    var interceptor: WechatPayRequestInterceptor {
-        return WechatPayRequestInterceptor(wechatPay: self)
-    }
+    /// 执行请求的 Client
+    let client: Session
+    
+    let decoder = JSONDecoder()
     
     public var validator: WechatPaySignatureValidator {
         return WechatPaySignatureValidator(wxCertPath: wxCertificatePath)
@@ -73,6 +74,8 @@ public struct WechatPay {
         self.mchid = mchid
         self.serialNo = serialNo
         self.wxCertificatePath = wxCertificatePath
+        self.decoder.dateDecodingStrategy = .iso8601
+        self.client = Session(interceptor: WechatPayRequestInterceptor(mchid: mchid, serialNo: serialNo, certificatePath: certificatePath))
     }
 }
 
