@@ -14,6 +14,7 @@ let package = Package(
     ],
     dependencies: [
         // Dependencies declare other packages that this package depends on.
+        .package(url: "https://github.com/apple/swift-nio.git", from: "2.58.0"),
         .package(url: "https://github.com/swift-server/async-http-client.git", from: "1.9.0"),
         .package(url: "https://github.com/vapor/jwt-kit.git", from: "4.0.0"),
     ],
@@ -25,7 +26,9 @@ let package = Package(
             dependencies: [
                 .product(name: "AsyncHTTPClient", package: "async-http-client"),
                 .product(name: "JWTKit", package: "jwt-kit"),
-            ], 
+                .product(name: "NIOCore", package: "swift-nio"),
+                .product(name: "NIOFoundationCompat", package: "swift-nio"),
+            ],
             path: "Sources/wechatpay-swift"
         ),
         .testTarget(

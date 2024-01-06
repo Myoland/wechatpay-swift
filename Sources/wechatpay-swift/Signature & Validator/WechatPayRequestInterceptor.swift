@@ -59,11 +59,10 @@ extension HTTPClientRequest {
             get async throws {
                 switch urlRequest.method {
                 case  HTTPMethod.POST, HTTPMethod.PUT:
-                    guard var bodyBuffer = try await urlRequest.body?.collect(upTo: 1024*1024),
-                          let bodyData =  bodyBuffer.readData(length: bodyBuffer.readableBytes),
-                          let bodyString = String(data: bodyData, encoding: .utf8) else {
+                    guard var bodyBuffer = try await urlRequest.body?.collect(upTo: 1024*1024) else {
                         return ""
                     }
+                    let bodyString = String(buffer: bodyBuffer)
                     return bodyString
                 default:
                     return ""

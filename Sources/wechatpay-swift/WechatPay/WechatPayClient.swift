@@ -9,6 +9,7 @@ import Foundation
 import AsyncHTTPClient
 import NIOHTTP1
 import NIOCore
+import NIOFoundationCompat
 
 extension WechatPay {
     struct Client {
