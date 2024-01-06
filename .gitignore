@@ -9,3 +9,4 @@ DerivedData/
 .netrc
 .swiftpm
 *.pem
+docker-compose.yml
