@@ -9,8 +9,8 @@ let package = Package(
     products: [
         // Products define the executables and libraries a package produces, and make them visible to other packages.
         .library(
-            name: "wechatpay-swift",
-            targets: ["wechatpay-swift"]),
+            name: "WechatPaySwift",
+            targets: ["WechatPaySwift"]),
     ],
     dependencies: [
         // Dependencies declare other packages that this package depends on.
@@ -21,14 +21,15 @@ let package = Package(
         // Targets are the basic building blocks of a package. A target can define a module or a test suite.
         // Targets can depend on other targets in this package, and on products in packages this package depends on.
         .target(
-            name: "wechatpay-swift",
+            name: "WechatPaySwift",
             dependencies: [
                 .product(name: "AsyncHTTPClient", package: "async-http-client"),
                 .product(name: "JWTKit", package: "jwt-kit"),
-            ]
+            ], 
+            path: "Sources/wechatpay-swift"
         ),
         .testTarget(
             name: "wechatpay-swiftTests",
-            dependencies: ["wechatpay-swift"]),
+            dependencies: ["WechatPaySwift"]),
     ]
 )

@@ -1,14 +1,13 @@
 import XCTest
 import Crypto
 import JWTKit
-@testable import wechatpay_swift
+@testable import WechatPaySwift
 
 final class wechatpaySignTests: XCTestCase {
     
     var wechatPay: WechatPay!
     
     override func setUp() async throws {
-        
         wechatPay = WechatPay(
             apiV3Secret: Environment.get("API_V3_KEY") ?? "",
             certificatePath: Environment.get("MCH_CERT_PATH") ?? "",
@@ -18,6 +17,7 @@ final class wechatpaySignTests: XCTestCase {
     }
     
     func testGetCertificate() async throws {
+        
         let certResponse = try await wechatPay.downloadCertificates()
         
         if let cert = certResponse.data.first {

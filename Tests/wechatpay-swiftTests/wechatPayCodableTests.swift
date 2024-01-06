@@ -1,7 +1,7 @@
 import XCTest
 import Crypto
 import JWTKit
-@testable import wechatpay_swift
+@testable import WechatPaySwift
 
 final class wechatpayCodableTests: XCTestCase {
     

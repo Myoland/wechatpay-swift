@@ -44,7 +44,7 @@ enum WechatPayAPIEntry {
     }
 }
 
-public struct WechatPay {
+public class WechatPay {
     /// V3 密钥
     public let apiV3Secret: String
     /// 证书路径
@@ -73,6 +73,10 @@ public struct WechatPay {
         self.wxCertificatePath = wxCertificatePath
         self.decoder.dateDecodingStrategy = .iso8601
         self.client = WechatPay.Client(httpClient: HTTPClient(eventLoopGroupProvider: .singleton), requestInterceptor: WechatPayRequestInterceptor(mchid: mchid, serialNo: serialNo, certificatePath: certificatePath), validator: WechatPaySignatureValidator(wxCertPath: wxCertificatePath))
+    }
+    
+    deinit {
+        try? self.client.httpClient.syncShutdown()
     }
 }
 
