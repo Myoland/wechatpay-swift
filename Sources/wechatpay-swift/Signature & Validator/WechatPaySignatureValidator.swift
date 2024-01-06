@@ -16,7 +16,7 @@ enum WechatPaySignatureValidatorError: Error {
 }
 
 public struct WechatPaySignatureValidator {
-    init(wxCertPath: String) {
+    public init(wxCertPath: String) {
         self.wxCertPath = wxCertPath
     }
     
