@@ -1,5 +1,4 @@
 import XCTest
-import Alamofire
 import Crypto
 import JWTKit
 @testable import wechatpay_swift

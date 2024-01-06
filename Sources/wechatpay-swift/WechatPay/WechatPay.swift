@@ -6,8 +6,9 @@
 //
 
 import Foundation
-import Alamofire
 import Crypto
+import NIOHTTP1
+import AsyncHTTPClient
 
 enum WechatPayAPIEntry {
     case downloadCertificates
@@ -31,14 +32,14 @@ enum WechatPayAPIEntry {
         return WechatPayAPIEntry.host + self.path
     }
     
-    var method: Alamofire.HTTPMethod {
+    var method: HTTPMethod {
         switch self {
         case .downloadCertificates:
-            return .get
+            return .GET
         case .h5Order:
-            return .post
+            return .POST
         case .transactionWithTradeNo:
-            return .get
+            return .GET
         }
     }
 }
@@ -56,13 +57,9 @@ public struct WechatPay {
     public let serialNo: String
     
     /// 执行请求的 Client
-    let client: Session
+    let client: WechatPay.Client
     
     let decoder = JSONDecoder()
-    
-    public var validator: WechatPaySignatureValidator {
-        return WechatPaySignatureValidator(wxCertPath: wxCertificatePath)
-    }
     
     public init(apiV3Secret: String,
                 certificatePath: String,
@@ -75,7 +72,7 @@ public struct WechatPay {
         self.serialNo = serialNo
         self.wxCertificatePath = wxCertificatePath
         self.decoder.dateDecodingStrategy = .iso8601
-        self.client = Session(interceptor: WechatPayRequestInterceptor(mchid: mchid, serialNo: serialNo, certificatePath: certificatePath))
+        self.client = WechatPay.Client(httpClient: HTTPClient(eventLoopGroupProvider: .singleton), requestInterceptor: WechatPayRequestInterceptor(mchid: mchid, serialNo: serialNo, certificatePath: certificatePath), validator: WechatPaySignatureValidator(wxCertPath: wxCertificatePath))
     }
 }
 

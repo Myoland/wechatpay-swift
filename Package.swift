@@ -14,7 +14,7 @@ let package = Package(
     ],
     dependencies: [
         // Dependencies declare other packages that this package depends on.
-        .package(url: "https://github.com/Alamofire/Alamofire.git", .upToNextMajor(from: "5.6.1")),
+        .package(url: "https://github.com/swift-server/async-http-client.git", from: "1.9.0"),
         .package(url: "https://github.com/vapor/jwt-kit.git", from: "4.0.0"),
     ],
     targets: [
@@ -23,7 +23,7 @@ let package = Package(
         .target(
             name: "wechatpay-swift",
             dependencies: [
-                .product(name: "Alamofire", package: "Alamofire"),
+                .product(name: "AsyncHTTPClient", package: "async-http-client"),
                 .product(name: "JWTKit", package: "jwt-kit"),
             ]
         ),

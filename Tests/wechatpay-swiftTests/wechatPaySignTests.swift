@@ -1,5 +1,4 @@
 import XCTest
-import Alamofire
 import Crypto
 import JWTKit
 @testable import wechatpay_swift
@@ -21,7 +20,7 @@ final class wechatpaySignTests: XCTestCase {
     func testGetCertificate() async throws {
         let certResponse = try await wechatPay.downloadCertificates()
         
-        if let cert = certResponse.value?.data.first {
+        if let cert = certResponse.data.first {
             let decodedCert = try wechatPay.decodeCert(cert: cert)
             XCTAssertNotNil(decodedCert)
         }
@@ -44,7 +43,7 @@ final class wechatpaySignTests: XCTestCase {
         
         let h5Response = try await client.prepayWithRequestPayment(request: request)
         
-        XCTAssertNotNil(h5Response.value)
+        XCTAssertNotNil(h5Response)
     }
     
     func testQueryH5OrderRefund() async throws {
@@ -53,7 +52,7 @@ final class wechatpaySignTests: XCTestCase {
         
         let h5Response = try await client.queryTransactionWithTradeNo(Environment.get("TEST_ORDER_NO") ?? "")
         
-        XCTAssertNotNil(h5Response.value)
+        XCTAssertNotNil(h5Response)
     }
     
     func testQueryH5OrderSuccess() async throws {
@@ -62,6 +61,6 @@ final class wechatpaySignTests: XCTestCase {
         
         let h5Response = try await client.queryTransactionWithTradeNo(Environment.get("TEST_ORDER_NO_SUCCESS") ?? "")
         
-        XCTAssertNotNil(h5Response.value)
+        XCTAssertNotNil(h5Response)
     }
 }

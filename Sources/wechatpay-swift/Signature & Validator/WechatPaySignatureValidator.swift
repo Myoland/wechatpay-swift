@@ -1,30 +1,34 @@
 //
 //  File.swift
-//  
+//
 //
 //  Created by kevinzhow on 2022/5/28.
 //
 
 import Foundation
-import Alamofire
 import JWTKit
+import AsyncHTTPClient
+import NIOCore
 
-enum SignatureError: Error {
-case responseSignatureNotMatch
+enum WechatPaySignatureValidatorError: Error {
+    case responseSignatureNotMatch
+    case failedToParseResponse
 }
 
 public struct WechatPaySignatureValidator {
+    init(wxCertPath: String) {
+        self.wxCertPath = wxCertPath
+    }
+    
     let wxCertPath: String
     
-    public func validate(timestamp: String, nonce: String, body: String, signature: String) -> Bool {
+    public func verify(timestamp: String, nonce: String, body: String, signature: String) -> Bool {
         let certPath = self.wxCertPath
         
         let message =
         """
         \(timestamp)\n\(nonce)\n\(body)\n
         """
-        
-        print(message)
         
         let pemString = try! String(contentsOf: URL(fileURLWithPath: certPath))
         
@@ -35,30 +39,18 @@ public struct WechatPaySignatureValidator {
         }
     }
     
-    var validation: DataRequest.Validation {
-        let validator = self
-        let customValidator: DataRequest.Validation = { (request, response, data) -> Request.ValidationResult in
-            
-            guard let timestamp = response.headers.value(for: "Wechatpay-Timestamp"),
-                  let nonce = response.headers.value(for: "Wechatpay-Nonce"),
-                  let data = data,
-                  let body = String(data: data, encoding: .utf8),
-                  let signature = response.headers.value(for: "Wechatpay-Signature") else {
-                return Request.ValidationResult.failure(SignatureError.responseSignatureNotMatch)
-                }
-                  
-            
-            if validator.validate(timestamp: timestamp, nonce: nonce, body: body, signature: signature) {
-                return Request.ValidationResult.success(())
-            } else {
-                return Request.ValidationResult.failure(SignatureError.responseSignatureNotMatch)
-            }
+    public func validate(response: AsyncHTTPClient.HTTPClientResponse, body: String) async throws {
+        
+        guard let timestamp = response.headers.first(name: "Wechatpay-Timestamp"),
+              let nonce = response.headers.first(name: "Wechatpay-Nonce"),
+              let signature = response.headers.first(name: "Wechatpay-Signature") else {
+            throw WechatPaySignatureValidatorError.failedToParseResponse
         }
         
-        return customValidator
-    }
-    
-    init(wxCertPath: String) {
-        self.wxCertPath = wxCertPath
+        if verify(timestamp: timestamp, nonce: nonce, body: body, signature: signature) {
+            return
+        } else {
+            throw WechatPaySignatureValidatorError.responseSignatureNotMatch
+        }
     }
 }

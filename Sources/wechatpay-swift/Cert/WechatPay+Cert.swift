@@ -6,19 +6,19 @@
 //
 
 import Foundation
-import Alamofire
 import Crypto
 
 extension WechatPay {
     /// 下载微信平台证书
-    func downloadCertificates() async throws -> DataResponse<WechatCertificateResponse, AFError> {
+    func downloadCertificates() async throws -> WechatCertificateResponse {
         
         let entry = WechatPayAPIEntry.downloadCertificates
         
-        let response = await self.client.request(
+        let response: WechatCertificateResponse = try await self.client.request(
             "\(entry.absolutePath)",
-            method: entry.method
-        ).validate(self.validator.validation).serializingDecodable(WechatCertificateResponse.self, decoder: self.decoder).response
+            method: entry.method,
+            decoder: self.decoder
+        )
         
         return response
     }
