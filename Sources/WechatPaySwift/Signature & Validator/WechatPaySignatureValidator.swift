@@ -16,23 +16,19 @@ enum WechatPaySignatureValidatorError: Error {
 }
 
 public struct WechatPaySignatureValidator {
-    public init(wxCertPath: String) {
-        self.wxCertPath = wxCertPath
+    public init(wxCertContent: String) {
+        self.wxCertContent = wxCertContent
     }
     
-    let wxCertPath: String
+    let wxCertContent: String
     
     public func verify(timestamp: String, nonce: String, body: String, signature: String) -> Bool {
-        let certPath = self.wxCertPath
-        
         let message =
         """
         \(timestamp)\n\(nonce)\n\(body)\n
         """
         
-        let pemString = try! String(contentsOf: URL(fileURLWithPath: certPath))
-        
-        if RSASigner.verify(signature: signature, message: message, with: pemString) {
+        if RSASigner.verify(signature: signature, message: message, with: wxCertContent) {
             return true
         } else {
             return false

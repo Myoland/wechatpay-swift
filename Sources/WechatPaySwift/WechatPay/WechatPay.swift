@@ -1,6 +1,6 @@
 //
 //  File.swift
-//  
+//
 //
 //  Created by kevinzhow on 2022/5/27.
 //
@@ -45,15 +45,15 @@ enum WechatPayAPIEntry {
 }
 
 public class WechatPay {
-    /// V3 密钥
+    /// V3 Secret
     public let apiV3Secret: String
-    /// 证书路径
-    public let certificatePath: String
-    /// 微信平台证书路径
-    public let wxCertificatePath: String
-    /// 商户号
+    /// PEM of certificate
+    public let certificateContent: String
+    /// PEM of Wechat Platform certificate
+    public let wxCertificateContent: String
+    /// mchid
     public let mchid: String
-    /// 商户证书序列号
+    /// merchant certificate serial number
     public let serialNo: String
     
     /// 执行请求的 Client
@@ -62,17 +62,28 @@ public class WechatPay {
     let decoder = JSONDecoder()
     
     public init(apiV3Secret: String,
+                certificateContent: String,
+                wxCertificateContent: String,
+                mchid: String,
+                serialNo: String) throws {
+        self.apiV3Secret = apiV3Secret
+        self.certificateContent = certificateContent
+        self.mchid = mchid
+        self.serialNo = serialNo
+        self.wxCertificateContent = wxCertificateContent
+        self.decoder.dateDecodingStrategy = .iso8601
+        self.client = WechatPay.Client(httpClient: HTTPClient(eventLoopGroupProvider: .singleton), requestInterceptor: WechatPayRequestInterceptor(mchid: mchid, serialNo: serialNo, certificateContent: certificateContent), validator: WechatPaySignatureValidator(wxCertContent: wxCertificateContent))
+    }
+    
+    public convenience init(apiV3Secret: String,
                 certificatePath: String,
                 wxCertificatePath: String,
                 mchid: String,
-                serialNo: String) {
-        self.apiV3Secret = apiV3Secret
-        self.certificatePath = certificatePath
-        self.mchid = mchid
-        self.serialNo = serialNo
-        self.wxCertificatePath = wxCertificatePath
-        self.decoder.dateDecodingStrategy = .iso8601
-        self.client = WechatPay.Client(httpClient: HTTPClient(eventLoopGroupProvider: .singleton), requestInterceptor: WechatPayRequestInterceptor(mchid: mchid, serialNo: serialNo, certificatePath: certificatePath), validator: WechatPaySignatureValidator(wxCertPath: wxCertificatePath))
+                serialNo: String) throws {
+       
+        let certContent = try String(contentsOf: URL(fileURLWithPath: certificatePath))
+        let wxCertContent = try String(contentsOf: URL(fileURLWithPath: wxCertificatePath))
+        try self.init(apiV3Secret: apiV3Secret, certificateContent: certContent, wxCertificateContent: wxCertContent, mchid: mchid, serialNo: serialNo)
     }
     
     deinit {

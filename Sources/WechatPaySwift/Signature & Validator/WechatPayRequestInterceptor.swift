@@ -22,14 +22,12 @@ struct WechatPayRequestInterceptor {
     
     private let mchid: String
     private let serialNo: String
-    private let certificatePath: String
-    private let privateKeyPem: String
+    private let certificateContent: String
     
-    init(mchid: String, serialNo: String, certificatePath: String) {
+    init(mchid: String, serialNo: String, certificateContent: String) {
         self.mchid = mchid
         self.serialNo = serialNo
-        self.certificatePath = certificatePath
-        self.privateKeyPem = try! String(contentsOf: URL(fileURLWithPath: certificatePath))
+        self.certificateContent = certificateContent
     }
     
     func adapt(urlRequest: inout HTTPClientRequest) async throws {
@@ -37,7 +35,7 @@ struct WechatPayRequestInterceptor {
         let timestamp = Int(Date().timeIntervalSince1970)
         let nonceStr = UUID().uuidString
         
-        let sign = try await urlRequest.genSign(nonceStr: nonceStr, timestamp: timestamp, privateKeyPem: privateKeyPem)
+        let sign = try await urlRequest.genSign(nonceStr: nonceStr, timestamp: timestamp, privateKeyPem: certificateContent)
         
         let signature =
         """
