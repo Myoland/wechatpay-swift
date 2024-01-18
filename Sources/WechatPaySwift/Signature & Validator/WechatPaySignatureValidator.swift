@@ -20,6 +20,11 @@ public struct WechatPaySignatureValidator {
         self.wxCertContent = wxCertContent
     }
     
+    public init(wxCertPath: String) throws {
+        let wxCertContent = try String(contentsOfFile: wxCertPath)
+        self.init(wxCertContent: wxCertContent)
+    }
+    
     let wxCertContent: String
     
     public func verify(timestamp: String, nonce: String, body: String, signature: String) -> Bool {
