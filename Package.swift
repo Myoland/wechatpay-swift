@@ -26,7 +26,7 @@ let package = Package(
                 .product(name: "AsyncHTTPClient", package: "async-http-client"),
                 .product(name: "JWTKit", package: "jwt-kit"),
             ],
-            path: "Sources/wechatpay-swift"
+            path: "Sources/WechatPaySwift"
         ),
         .testTarget(
             name: "wechatpay-swiftTests",
