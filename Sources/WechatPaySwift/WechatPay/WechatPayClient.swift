@@ -14,7 +14,7 @@ import NIOFoundationCompat
 extension WechatPay {
     struct Client {
         
-        enum ClientError: Error {
+        public enum ClientError: Error {
             case unexpectedResponse(reason: String)
         }
         
