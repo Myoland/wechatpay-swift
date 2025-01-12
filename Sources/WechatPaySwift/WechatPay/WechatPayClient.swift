@@ -17,7 +17,7 @@ extension WechatPay {
         public enum ClientError: Error {
             case unexpectedResponse(reason: String)
         }
-        
+
         let httpClient: HTTPClient
         let requestInterceptor: WechatPayRequestInterceptor
         var validator: WechatPaySignatureValidator

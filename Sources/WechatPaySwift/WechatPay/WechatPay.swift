@@ -14,6 +14,7 @@ enum WechatPayAPIEntry {
     case downloadCertificates
     case h5Order
     case transactionWithTradeNo
+    case transactionWithWechatTransactionID
     
     static let host = "https://api.mch.weixin.qq.com/v3"
     
@@ -25,6 +26,8 @@ enum WechatPayAPIEntry {
             return "/pay/transactions/h5"
         case .transactionWithTradeNo:
             return "/pay/transactions/out-trade-no"
+        case .transactionWithWechatTransactionID:
+            return "/pay/transactions/id"
         }
     }
     
@@ -39,6 +42,8 @@ enum WechatPayAPIEntry {
         case .h5Order:
             return .POST
         case .transactionWithTradeNo:
+            return .GET
+        case .transactionWithWechatTransactionID:
             return .GET
         }
     }
