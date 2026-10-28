@@ -90,9 +90,41 @@ public class WechatPay {
         let wxCertContent = try String(contentsOf: URL(fileURLWithPath: wxCertificatePath))
         try self.init(apiV3Secret: apiV3Secret, certificateContent: certContent, wxCertificateContent: wxCertContent, mchid: mchid, serialNo: serialNo)
     }
+
+    public init(apiV3Secret: String,
+                certificateContent: String,
+                wxCertificateContent: String = "",
+                mchid: String,
+                serialNo: String,
+                certificateProvider: any WechatPayPlatformCertificateProvider) throws {
+        self.apiV3Secret = apiV3Secret
+        self.certificateContent = certificateContent
+        self.wxCertificateContent = wxCertificateContent
+        self.mchid = mchid
+        self.serialNo = serialNo
+        self.decoder.dateDecodingStrategy = .iso8601
+        self.client = WechatPay.Client(
+            httpClient: HTTPClient(eventLoopGroupProvider: .singleton),
+            requestInterceptor: WechatPayRequestInterceptor(mchid: mchid, serialNo: serialNo, certificateContent: certificateContent),
+            validator: WechatPaySignatureValidator(certificateProvider: certificateProvider))
+    }
+
+    public convenience init(apiV3Secret: String,
+                            certificateContent: String,
+                            certificateProvider: any WechatPayPlatformCertificateProvider,
+                            mchid: String,
+                            serialNo: String) throws {
+        try self.init(apiV3Secret: apiV3Secret, certificateContent: certificateContent,
+                      mchid: mchid, serialNo: serialNo, certificateProvider: certificateProvider)
+    }
+
+    public func verifyNotification(serialNumber: String, timestamp: String, nonce: String, body: String, signature: String) async throws -> Bool {
+        try await client.validator.verify(serialNumber: serialNumber, timestamp: timestamp, nonce: nonce, body: body, signature: signature)
+    }
     
     deinit {
-        try? self.client.httpClient.syncShutdown()
+        // A request-scoped client can be released on a NIO event loop. Never block it.
+        self.client.httpClient.shutdown { _ in }
     }
 }
 

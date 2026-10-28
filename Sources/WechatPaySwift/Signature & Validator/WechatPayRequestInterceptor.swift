@@ -73,8 +73,9 @@ extension HTTPClientRequest {
         \(urlRequest.method.rawValue)\n\(URL(string: urlRequest.url)!.pathWithQuery)\n\(timestamp)\n\(nonceStr)\n\(try await body)\n
         """
         
-        print(message)
-        
-        return RSASigner.sign(text: message, privateKeyPem: privateKeyPem)!
+        guard let signature = RSASigner.sign(text: message, privateKeyPem: privateKeyPem) else {
+            throw WechatPayRequestInterceptorError.failedToSignBody
+        }
+        return signature
     }
 }

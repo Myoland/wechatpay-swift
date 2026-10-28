@@ -9,4 +9,12 @@ DerivedData/
 .netrc
 .swiftpm
 *.pem
+# Generated public offline-test fixtures. These keys have no merchant authority.
+!Tests/wechatpay-swiftTests/Fixtures/platform-a.pem
+!Tests/wechatpay-swiftTests/Fixtures/platform-a.key.pem
+!Tests/wechatpay-swiftTests/Fixtures/platform-a.public.pem
+!Tests/wechatpay-swiftTests/Fixtures/platform-b.pem
+!Tests/wechatpay-swiftTests/Fixtures/platform-b.key.pem
+!Tests/wechatpay-swiftTests/Fixtures/platform-b.public.pem
+!Tests/wechatpay-swiftTests/Fixtures/platform-conflict.pem
 docker-compose.yml
