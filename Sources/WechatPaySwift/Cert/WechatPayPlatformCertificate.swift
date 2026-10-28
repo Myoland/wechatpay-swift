@@ -15,6 +15,7 @@ public enum WechatPayPlatformCertificateError: Error, Equatable, Sendable {
     case persistenceFailed
     case missingSignatureHeaders
     case invalidSignature
+    case invalidTimestamp
     case invalidResponse
     case invalidEncryptedCertificate
     case certificateMetadataMismatch
@@ -75,7 +76,10 @@ public protocol WechatPayPlatformCertificateProvider: Sendable {
 
 extension WechatPayPlatformCertificateProvider {
     public func verificationKey(for identifier: String) async throws -> WechatPayVerificationKey {
-        .certificate(try await certificate(for: identifier))
+        guard !identifier.hasPrefix("PUB_KEY_ID_") else {
+            throw WechatPayPlatformCertificateError.unknownPublicKeyID
+        }
+        return .certificate(try await certificate(for: identifier))
     }
 }
 
@@ -84,14 +88,12 @@ extension WechatPayPlatformCertificateProvider {
 public actor WechatPayPlatformCertificateStore: WechatPayPlatformCertificateProvider {
     public typealias Refresh = @Sendable () async throws -> [WechatPayPlatformCertificate]
     public typealias Clock = @Sendable () -> Date
-    public typealias Persist = @Sendable ([WechatPayPlatformCertificate]) async throws -> Void
 
     private var certificates: [String: WechatPayPlatformCertificate]
     private let publicKeys: [String: TrustedWechatPublicKey]
     private let fetch: Refresh?
     private let clock: Clock
     private let minimumRefreshInterval: TimeInterval
-    private let persist: Persist?
     private var lastRefreshAttempt: Date?
     private var pending: Task<[WechatPayPlatformCertificate], Error>?
     private var generation = 0
@@ -101,7 +103,6 @@ public actor WechatPayPlatformCertificateStore: WechatPayPlatformCertificateProv
         refresh: Refresh? = nil,
         clock: @escaping Clock = { Date() },
         minimumRefreshInterval: TimeInterval = 60,
-        persist: Persist? = nil,
         publicKeys: [TrustedWechatPublicKey] = []
     ) throws {
         guard minimumRefreshInterval.isFinite, minimumRefreshInterval >= 0,
@@ -120,7 +121,6 @@ public actor WechatPayPlatformCertificateStore: WechatPayPlatformCertificateProv
         self.fetch = refresh
         self.clock = clock
         self.minimumRefreshInterval = minimumRefreshInterval
-        self.persist = persist
     }
 
     public func snapshot() -> [WechatPayPlatformCertificate] {
@@ -179,7 +179,6 @@ public actor WechatPayPlatformCertificateStore: WechatPayPlatformCertificateProv
         generation += 1
         let id = generation
         let old = certificates
-        let persist = self.persist
         let task = Task<[WechatPayPlatformCertificate], Error> {
             let downloaded: [WechatPayPlatformCertificate]
             do { downloaded = try await fetch() }
@@ -197,10 +196,6 @@ public actor WechatPayPlatformCertificateStore: WechatPayPlatformCertificateProv
             }
             guard merged.count <= 32 else { throw WechatPayPlatformCertificateError.invalidResponse }
             let result = merged.values.sorted { $0.serialNumber < $1.serialNumber }
-            if let persist {
-                do { try await persist(result) }
-                catch { throw WechatPayPlatformCertificateError.persistenceFailed }
-            }
             return result
         }
         pending = task

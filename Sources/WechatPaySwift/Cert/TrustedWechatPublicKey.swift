@@ -11,10 +11,10 @@ public struct TrustedWechatPublicKey: Sendable {
         self.id = try Self.validateID(id)
         let normalized = pem.replacingOccurrences(of: "\r\n", with: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
         guard normalized.utf8.count <= 64 * 1024,
-              normalized.hasPrefix("-----BEGIN PUBLIC KEY-----") || normalized.hasPrefix("-----BEGIN RSA PUBLIC KEY-----"),
+              normalized.hasPrefix("-----BEGIN PUBLIC KEY-----"),
               normalized.components(separatedBy: "-----BEGIN ").count == 2,
               normalized.components(separatedBy: "-----END ").count == 2,
-              normalized.hasSuffix("-----END PUBLIC KEY-----") || normalized.hasSuffix("-----END RSA PUBLIC KEY-----"),
+              normalized.hasSuffix("-----END PUBLIC KEY-----"),
               !normalized.contains("PRIVATE KEY"),
               (try? RSAKey.public(pem: normalized)) != nil else {
             throw WechatPayPlatformCertificateError.invalidPublicKey

@@ -28,7 +28,7 @@ final class PlatformCertificateTests: XCTestCase {
     func validator(_ certificates: [WechatPayPlatformCertificate], now: Date? = nil) throws -> WechatPaySignatureValidator {
         let fixed = try now ?? clockDate()
         let store = try WechatPayPlatformCertificateStore(certificates: certificates, clock: { fixed })
-        return WechatPaySignatureValidator(certificateProvider: store)
+        return WechatPaySignatureValidator(certificateProvider: store, clock: { fixed })
     }
     func headers(_ envelope: WechatPayPlatformCertificateEnvelope) -> HTTPHeaders {
         ["Wechatpay-Serial": envelope.serialNumber, "Wechatpay-Timestamp": envelope.timestamp,
@@ -104,7 +104,7 @@ final class PlatformCertificateTests: XCTestCase {
         for date in [a.notValidBefore.addingTimeInterval(-1), a.notValidAfter] {
             let v = try validator([a], now: date)
             do {
-                _ = try await v.verify(serialNumber: "A1", timestamp: timestamp(), nonce: nonce, body: message, signature: signature("a"))
+                _ = try await v.verify(serialNumber: "A1", timestamp: String(Int64(date.timeIntervalSince1970)), nonce: nonce, body: message, signature: signature("a", timestamp: String(Int64(date.timeIntervalSince1970))))
                 XCTFail("certificate outside its validity was used")
             } catch { XCTAssertEqual(error as? WechatPayPlatformCertificateError, .certificateNotCurrentlyValid) }
         }
@@ -160,11 +160,18 @@ final class PlatformCertificateTests: XCTestCase {
 
     func testPersistenceFailureDoesNotInstallNewCertificate() async throws {
         let a = try certificate("a"), b = try certificate("b"), now = try clockDate()
-        let store = try WechatPayPlatformCertificateStore(certificates: [a], refresh: { [b] }, clock: { now }, persist: { _ in throw TestFailure.expected })
+        let response = try envelope([a, b]), verifier = try downloader(), cache = FailingEnvelopeCache()
+        let store = try WechatPayPlatformCertificateStore(certificates: [a], refresh: {
+            let bundle = try verifier.verifyCachedEnvelopeBundle(response)
+            try await cache.save(bundle.envelope)
+            return bundle.certificates
+        }, clock: { now })
         do { try await store.refresh(); XCTFail("persistence error ignored") }
-        catch { XCTAssertEqual(error as? WechatPayPlatformCertificateError, .persistenceFailed) }
+        catch { XCTAssertEqual(error as? WechatPayPlatformCertificateError, .refreshFailed) }
         let snapshot = await store.snapshot().map(\.serialNumber)
+        let attempts = await cache.attempts
         XCTAssertEqual(snapshot, ["A1"])
+        XCTAssertEqual(attempts, 1)
     }
 
     func testExplicitRefreshRetainsStillValidOldCertificatesAndRejectsSerialConflict() async throws {
@@ -272,7 +279,7 @@ final class PlatformCertificateTests: XCTestCase {
         let store = try WechatPayPlatformCertificateStore(certificates: [], refresh: {
             await calls.increment(); throw TestFailure.expected
         }, clock: { now }, publicKeys: [key])
-        let v = WechatPaySignatureValidator(certificateProvider: store)
+        let v = WechatPaySignatureValidator(certificateProvider: store, clock: { now })
         let valid = try await v.verify(serialNumber: key.id, timestamp: timestamp(), nonce: nonce, body: message, signature: signature("b"))
         XCTAssertTrue(valid)
         let e = try publicKeyEnvelope()
@@ -286,7 +293,7 @@ final class PlatformCertificateTests: XCTestCase {
         let store = try WechatPayPlatformCertificateStore(certificates: [certificate("a")], refresh: {
             await calls.increment(); return []
         }, clock: { now }, publicKeys: [key])
-        let v = WechatPaySignatureValidator(certificateProvider: store)
+        let v = WechatPaySignatureValidator(certificateProvider: store, clock: { now })
         do {
             _ = try await v.verify(serialNumber: "PUB_KEY_ID_UNKNOWN", timestamp: timestamp(), nonce: nonce, body: message, signature: signature("a"))
             XCTFail("unconfigured public key id accepted")
@@ -309,7 +316,7 @@ final class PlatformCertificateTests: XCTestCase {
     func testCertificatesAndPublicKeyCoexistDuringMigration() async throws {
         let a = try certificate("a"), b = try certificate("b"), now = try clockDate(), key = try trustedPublicKey()
         let store = try WechatPayPlatformCertificateStore(certificates: [a, b], clock: { now }, publicKeys: [key])
-        let v = WechatPaySignatureValidator(certificateProvider: store)
+        let v = WechatPaySignatureValidator(certificateProvider: store, clock: { now })
         for (id, signingKey) in [("A1", "a"), ("B2", "b"), (key.id, "b")] {
             let valid = try await v.verify(serialNumber: id, timestamp: timestamp(), nonce: nonce, body: message, signature: signature(signingKey))
             XCTAssertTrue(valid)
@@ -342,12 +349,163 @@ final class PlatformCertificateTests: XCTestCase {
 
     func testProviderCannotSubstituteDifferentSerialOrPublicKeyID() async throws {
         let a = try certificate("a")
-        let v = WechatPaySignatureValidator(certificateProvider: SubstitutingProvider(certificate: a))
+        let now = try clockDate()
+        let v = WechatPaySignatureValidator(certificateProvider: SubstitutingProvider(certificate: a), clock: { now })
         for id in ["B2", "PUB_KEY_ID_UNKNOWN"] {
             do {
                 _ = try await v.verify(serialNumber: id, timestamp: timestamp(), nonce: nonce, body: message, signature: signature("a"))
                 XCTFail("provider selected a different identity")
-            } catch { XCTAssertEqual(error as? WechatPayPlatformCertificateError, .serialNumberMismatch) }
+            } catch { XCTAssertEqual(error as? WechatPayPlatformCertificateError,
+                                     id.hasPrefix("PUB_KEY_ID_") ? .unknownPublicKeyID : .serialNumberMismatch) }
+        }
+    }
+
+    func testStaleFutureAndMalformedTimestampsRejectBeforeLookupOrFetch() async throws {
+        let now = try clockDate(), calls = CallCounter(), lookups = CallCounter()
+        let a = try certificate("a")
+        let store = try WechatPayPlatformCertificateStore(certificates: [a], refresh: {
+            await calls.increment(); return [a]
+        }, clock: { now })
+        let provider = CountingProvider(store: store, lookups: lookups)
+        let v = WechatPaySignatureValidator(certificateProvider: provider, clock: { now })
+        let seconds = Int64(now.timeIntervalSince1970)
+        let invalid = ["1", "abc", "", "0", "-1", "+123", " 123", "123 ", "1.0", "1e9",
+                       "9223372036854775808", "999999999999999999999999999999", "١٢٣"]
+            + [-301, -300, 300, 301].map { String(seconds + Int64($0)) }
+        for stamp in invalid {
+            let signed = try signature("a", timestamp: stamp)
+            do {
+                _ = try await v.verify(serialNumber: "B2", timestamp: stamp, nonce: nonce, body: message, signature: signed)
+                XCTFail("invalid timestamp accepted")
+            } catch { XCTAssertEqual(error as? WechatPayPlatformCertificateError, .invalidTimestamp) }
+            let h: HTTPHeaders = ["Wechatpay-Serial": "B2", "Wechatpay-Timestamp": stamp,
+                                  "Wechatpay-Nonce": nonce, "Wechatpay-Signature": signed]
+            do { try await v.validate(response: HTTPClientResponse(headers: h), body: message); XCTFail("invalid API timestamp accepted") }
+            catch { XCTAssertEqual(error as? WechatPayPlatformCertificateError,
+                                   stamp.isEmpty ? .missingSignatureHeaders : .invalidTimestamp) }
+        }
+        let lookupCount = await lookups.value, fetchCount = await calls.value
+        XCTAssertEqual(lookupCount, 0); XCTAssertEqual(fetchCount, 0)
+    }
+
+    func testTimestampInsideFiveMinuteBoundaryUsesInjectedClock() async throws {
+        let now = try clockDate(), v = try validator([certificate("a")])
+        for delta in [-299, 0, 299] {
+            let stamp = String(Int64(now.timeIntervalSince1970) + Int64(delta))
+            let valid = try await v.verify(serialNumber: "A1", timestamp: stamp, nonce: nonce,
+                                           body: message, signature: signature("a", timestamp: stamp))
+            XCTAssertTrue(valid)
+        }
+    }
+
+    func testMalformedSignatureRejectsBeforeLookupOrFetch() async throws {
+        let now = try clockDate(), calls = CallCounter(), lookups = CallCounter(), a = try certificate("a")
+        let store = try WechatPayPlatformCertificateStore(certificates: [a], refresh: {
+            await calls.increment(); return [a]
+        }, clock: { now })
+        let v = WechatPaySignatureValidator(certificateProvider: CountingProvider(store: store, lookups: lookups), clock: { now })
+        for signature in ["", "bad-base64!"] {
+            let valid = try await v.verify(serialNumber: "B2", timestamp: timestamp(), nonce: nonce, body: message, signature: signature)
+            XCTAssertFalse(valid)
+        }
+        let lookupCount = await lookups.value, fetchCount = await calls.value
+        XCTAssertEqual(lookupCount, 0); XCTAssertEqual(fetchCount, 0)
+    }
+
+    func testCooldownExpiresAndAllowsSecondRefresh() async throws {
+        let clock = try MutableClock(clockDate()), calls = CallCounter(), a = try certificate("a")
+        let store = try WechatPayPlatformCertificateStore(certificates: [a], refresh: {
+            await calls.increment(); return [a]
+        }, clock: { clock.now })
+        try await store.refresh()
+        clock.advance(59)
+        do { try await store.refresh(); XCTFail("cooldown ignored") }
+        catch { XCTAssertEqual(error as? WechatPayPlatformCertificateError, .refreshThrottled) }
+        clock.advance(2)
+        try await store.refresh()
+        let count = await calls.value
+        XCTAssertEqual(count, 2)
+    }
+
+    func testDefaultProviderRejectsPublicKeyIDWithoutCertificateLookup() async throws {
+        let now = try clockDate(), calls = CallCounter(), a = try certificate("a")
+        let store = try WechatPayPlatformCertificateStore(certificates: [a], refresh: {
+            await calls.increment(); return [a]
+        }, clock: { now })
+        let lookups = CallCounter(), provider = CountingProvider(store: store, lookups: lookups)
+        do { _ = try await provider.verificationKey(for: "PUB_KEY_ID_UNKNOWN"); XCTFail("default provider accepted a public key id") }
+        catch { XCTAssertEqual(error as? WechatPayPlatformCertificateError, .unknownPublicKeyID) }
+        let lookupCount = await lookups.value, fetchCount = await calls.value
+        XCTAssertEqual(lookupCount, 0); XCTAssertEqual(fetchCount, 0)
+    }
+
+    func client(key: String? = nil) throws -> WechatPay {
+        let now = try clockDate()
+        let store = try WechatPayPlatformCertificateStore(certificates: [], clock: { now }, publicKeys: [trustedPublicKey()])
+        return try WechatPay(apiV3Secret: key ?? apiKey, certificateContent: fixture("platform-a.key"),
+                             mchid: "offline-test-merchant", serialNo: "offline-test-serial",
+                             certificateProvider: store, clock: { now })
+    }
+
+    func testWechatPayNotificationEntryUsesProviderClockAndPublicKey() async throws {
+        let c = try client()
+        let valid = try await c.verifyNotification(serialNumber: "PUB_KEY_ID_OFFLINE_B", timestamp: timestamp(),
+                                                  nonce: nonce, body: message, signature: signature("b"))
+        XCTAssertTrue(valid)
+        do {
+            _ = try await c.verifyNotification(serialNumber: "PUB_KEY_ID_OFFLINE_B", timestamp: "1",
+                                              nonce: nonce, body: message, signature: signature("b", timestamp: "1"))
+            XCTFail("notification entry ignored clock")
+        } catch { XCTAssertEqual(error as? WechatPayPlatformCertificateError, .invalidTimestamp) }
+    }
+
+    func encryptedResource(_ plaintext: Data) throws -> String {
+        let sealed = try AES.GCM.seal(plaintext, using: SymmetricKey(data: Data(apiKey.utf8)),
+                                     nonce: AES.GCM.Nonce(data: Data("resource0001".utf8)), authenticating: Data("resource".utf8))
+        return (sealed.ciphertext + sealed.tag).base64EncodedString()
+    }
+
+    func notification(ciphertext: String, resourceNonce: String = "resource0001") -> WechatPay.H5API.PayNotification {
+        .init(id: "offline-notification", createTime: Date(timeIntervalSince1970: 1), resourceType: "encrypt-resource",
+              eventType: .transactionSuccess, summary: "offline",
+              resource: .init(originalType: "transaction", algorithm: "AEAD_AES_256_GCM", ciphertext: ciphertext,
+                              associatedData: "resource", nonce: resourceNonce))
+    }
+
+    func testMalformedNotificationResourceThrowsTypedErrorsWithoutCrashing() throws {
+        let api = WechatPay.H5API(wechatPay: try client())
+        let encrypted = try encryptedResource(Data(message.utf8))
+        let cases: [(String, String, WechatPayDecryptionError)] = [
+            ("bad-base64!", "resource0001", .invalidCiphertext),
+            (Data(repeating: 0, count: 15).base64EncodedString(), "resource0001", .invalidCiphertext),
+            (encrypted, "short", .invalidNonce), (encrypted, "resource0001too-long", .invalidNonce),
+            (encrypted, "resource0002", .authenticationFailed),
+            (try encryptedResource(Data([0xFF, 0xFE])), "resource0001", .invalidPlaintext)
+        ]
+        for (ciphertext, resourceNonce, expected) in cases {
+            XCTAssertThrowsError(try api.decodeNotification(notification(ciphertext: ciphertext, resourceNonce: resourceNonce)) as [String: Bool]) {
+                XCTAssertEqual($0 as? WechatPayDecryptionError, expected)
+            }
+        }
+        let valid: [String: Bool] = try api.decodeNotification(notification(ciphertext: encrypted))
+        XCTAssertEqual(valid, ["offline": true])
+        let badKeyAPI = WechatPay.H5API(wechatPay: try client(key: "short"))
+        XCTAssertThrowsError(try badKeyAPI.decodeNotification(notification(ciphertext: encrypted)) as [String: Bool]) {
+            XCTAssertEqual($0 as? WechatPayDecryptionError, .invalidAPIv3Key)
+        }
+    }
+
+    func testLegacyValidatorPublicPEMAndMalformedSignatureDoNotCrash() throws {
+        let legacy = try WechatPaySignatureValidator(wxCertContent: fixture("platform-b.public"))
+        XCTAssertFalse(try legacy.verify(timestamp: timestamp(), nonce: nonce, body: message, signature: signature("b")))
+        let certificateValidator = try WechatPaySignatureValidator(wxCertContent: certificate("b").pem)
+        XCTAssertFalse(try certificateValidator.verify(timestamp: timestamp(), nonce: nonce, body: message, signature: "bad-base64!"))
+    }
+
+    func testPublicKeyAcceptsSPKIAndExplicitlyRejectsPKCS1() throws {
+        XCTAssertNoThrow(try trustedPublicKey())
+        XCTAssertThrowsError(try TrustedWechatPublicKey(id: "PUB_KEY_ID_OFFLINE_B", pem: fixture("platform-b.pkcs1.public"))) {
+            XCTAssertEqual($0 as? WechatPayPlatformCertificateError, .invalidPublicKey)
         }
     }
 
@@ -357,6 +515,37 @@ private enum TestFailure: Error { case expected }
 private actor CallCounter {
     private(set) var value = 0
     func increment() { value += 1 }
+}
+
+private actor FailingEnvelopeCache {
+    private(set) var attempts = 0
+    func save(_ envelope: WechatPayPlatformCertificateEnvelope) throws {
+        attempts += 1
+        throw TestFailure.expected
+    }
+}
+
+private struct CountingProvider: WechatPayPlatformCertificateProvider {
+    let store: WechatPayPlatformCertificateStore
+    let lookups: CallCounter
+    func certificate(for serialNumber: String) async throws -> WechatPayPlatformCertificate {
+        await lookups.increment()
+        return try await store.certificate(for: serialNumber)
+    }
+}
+
+private final class MutableClock: @unchecked Sendable {
+    private let lock = NSLock()
+    private var value: Date
+    init(_ value: Date) { self.value = value }
+    var now: Date {
+        lock.lock(); defer { lock.unlock() }
+        return value
+    }
+    func advance(_ interval: TimeInterval) {
+        lock.lock(); defer { lock.unlock() }
+        value = value.addingTimeInterval(interval)
+    }
 }
 
 private struct SubstitutingProvider: WechatPayPlatformCertificateProvider {

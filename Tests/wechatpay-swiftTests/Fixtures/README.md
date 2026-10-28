@@ -9,6 +9,7 @@ Swift Certificates and its RSA parser/verifier is JWTKit.
 - `platform-b`: a different RSA test key, certificate serial B2, ten-year validity.
 - `platform-conflict`: B's public key under serial A1, to test serial conflicts.
 - `*.public.pem`: public-key-mode fixtures exported from those same test keys.
+- `platform-b.pkcs1.public.pem`: B's public key exported as PKCS#1, explicitly rejected by the SPKI-only API.
 
 Tests inject a clock within A's validity; they do not depend on the current date.
 The shorter A validity tests cache reload after the original download signer has

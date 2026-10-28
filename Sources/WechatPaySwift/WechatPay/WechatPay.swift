@@ -70,25 +70,27 @@ public class WechatPay {
                 certificateContent: String,
                 wxCertificateContent: String,
                 mchid: String,
-                serialNo: String) throws {
+                serialNo: String,
+                clock: @escaping @Sendable () -> Date = { Date() }) throws {
         self.apiV3Secret = apiV3Secret
         self.certificateContent = certificateContent
         self.mchid = mchid
         self.serialNo = serialNo
         self.wxCertificateContent = wxCertificateContent
         self.decoder.dateDecodingStrategy = .iso8601
-        self.client = WechatPay.Client(httpClient: HTTPClient(eventLoopGroupProvider: .singleton), requestInterceptor: WechatPayRequestInterceptor(mchid: mchid, serialNo: serialNo, certificateContent: certificateContent), validator: WechatPaySignatureValidator(wxCertContent: wxCertificateContent))
+        self.client = WechatPay.Client(httpClient: HTTPClient(eventLoopGroupProvider: .singleton), requestInterceptor: WechatPayRequestInterceptor(mchid: mchid, serialNo: serialNo, certificateContent: certificateContent), validator: WechatPaySignatureValidator(wxCertContent: wxCertificateContent, clock: clock))
     }
     
     public convenience init(apiV3Secret: String,
                 certificatePath: String,
                 wxCertificatePath: String,
                 mchid: String,
-                serialNo: String) throws {
+                serialNo: String,
+                clock: @escaping @Sendable () -> Date = { Date() }) throws {
        
         let certContent = try String(contentsOf: URL(fileURLWithPath: certificatePath))
         let wxCertContent = try String(contentsOf: URL(fileURLWithPath: wxCertificatePath))
-        try self.init(apiV3Secret: apiV3Secret, certificateContent: certContent, wxCertificateContent: wxCertContent, mchid: mchid, serialNo: serialNo)
+        try self.init(apiV3Secret: apiV3Secret, certificateContent: certContent, wxCertificateContent: wxCertContent, mchid: mchid, serialNo: serialNo, clock: clock)
     }
 
     public init(apiV3Secret: String,
@@ -96,7 +98,8 @@ public class WechatPay {
                 wxCertificateContent: String = "",
                 mchid: String,
                 serialNo: String,
-                certificateProvider: any WechatPayPlatformCertificateProvider) throws {
+                certificateProvider: any WechatPayPlatformCertificateProvider,
+                clock: @escaping @Sendable () -> Date = { Date() }) throws {
         self.apiV3Secret = apiV3Secret
         self.certificateContent = certificateContent
         self.wxCertificateContent = wxCertificateContent
@@ -106,16 +109,17 @@ public class WechatPay {
         self.client = WechatPay.Client(
             httpClient: HTTPClient(eventLoopGroupProvider: .singleton),
             requestInterceptor: WechatPayRequestInterceptor(mchid: mchid, serialNo: serialNo, certificateContent: certificateContent),
-            validator: WechatPaySignatureValidator(certificateProvider: certificateProvider))
+            validator: WechatPaySignatureValidator(certificateProvider: certificateProvider, clock: clock))
     }
 
     public convenience init(apiV3Secret: String,
                             certificateContent: String,
                             certificateProvider: any WechatPayPlatformCertificateProvider,
                             mchid: String,
-                            serialNo: String) throws {
+                            serialNo: String,
+                            clock: @escaping @Sendable () -> Date = { Date() }) throws {
         try self.init(apiV3Secret: apiV3Secret, certificateContent: certificateContent,
-                      mchid: mchid, serialNo: serialNo, certificateProvider: certificateProvider)
+                      mchid: mchid, serialNo: serialNo, certificateProvider: certificateProvider, clock: clock)
     }
 
     public func verifyNotification(serialNumber: String, timestamp: String, nonce: String, body: String, signature: String) async throws -> Bool {
@@ -131,20 +135,7 @@ public class WechatPay {
 
 extension WechatPay {
     func decodeCiphertext(ciphertext: String, nonce: String, tag: String) throws -> String {
-        let ciphertextData = Data(base64Encoded: ciphertext)!
-
-        let sharedKey = SymmetricKey(data: self.apiV3Secret.data(using: .utf8)!)
-        
-        let aNonce = try AES.GCM.Nonce(data: nonce.data(using: .utf8)!)
-        
-        let combinedData = aNonce + ciphertextData
-        
-        let box = try AES.GCM.SealedBox(combined: combinedData)
-        
-        let decryptedData = try AES.GCM.open(box, using: sharedKey, authenticating: tag.data(using: .utf8)!)
-        
-        let plaintext = String(data: decryptedData, encoding: .utf8)!
-        
-        return plaintext
+        try WechatPayAEAD.decrypt(ciphertext: ciphertext, nonce: nonce,
+                                  associatedData: tag, apiV3Secret: apiV3Secret)
     }
 }

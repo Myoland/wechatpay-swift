@@ -17,12 +17,12 @@ configuration or the authenticated downloader; never load arbitrary cache PEMs
 as trust anchors.
 
 `TrustedWechatPublicKey(id:pem:)` accepts an explicitly configured `PUB_KEY_ID_*`
-and RSA public PEM. Private keys, malformed PEM, certificate PEM, and malformed
+and SPKI `BEGIN PUBLIC KEY` RSA PEM. PKCS#1 `BEGIN RSA PUBLIC KEY`, private keys, malformed PEM, certificate PEM, and malformed
 IDs are rejected. Unknown public-key IDs are rejected without certificate
 refresh. Public keys are never learned from a notification or certificate payload.
 
 The store accepts `certificates:`, `refresh:`, `clock:`,
-`minimumRefreshInterval:`, `persist:`, and `publicKeys:`. The asynchronous
+`minimumRefreshInterval:`, and `publicKeys:`. There is no PEM-list persistence hook. The asynchronous
 `certificate(for:)` selects the exact normalized certificate serial and checks
 its current validity. `verificationKey(for:)` also supports configured platform
 public-key IDs. The provider protocol has a default certificate adapter so
@@ -31,7 +31,7 @@ existing certificate providers remain source compatible.
 The new `WechatPay` initializer retains the original merchant arguments and adds
 `certificateProvider:`. A public-key-only client can pass an empty
 `wxCertificateContent` when this provider is supplied; it does not need a seed
-certificate or a certificate refresh closure.
+certificate or a certificate refresh closure. All `WechatPay` constructors and the validator accept a trailing `clock:` closure (default: `Date()`). Use the same clock for the store and client.
 
 ## Notification and response validation
 
@@ -41,12 +41,15 @@ missing or duplicate signature headers at the HTTP boundary. A failed key lookup
 throws; an invalid cryptographic signature returns false. Never continue payment
 or refund processing in either case.
 
+The asynchronous verifier rejects non-decimal, non-positive, overflowing, stale, and future timestamps before looking up any key. Its injected clock must differ from the signed epoch seconds by strictly less than 300 seconds: exactly ±300 seconds is rejected, following the official Java response validator. Malformed Base64 signatures are also rejected before lookup. The application remains responsible for nonce/event deduplication and idempotent payment processing; the time window alone does not prevent replay within that window.
+
 Normal SDK API responses require all four signature headers, reject duplicates,
 and use the same serial-selecting provider. There is no general validation-disable
 argument in the ordinary API request path.
 
-The old synchronous single-PEM `verify` overload remains for source compatibility;
-it is not the rotation-aware notification API.
+The old synchronous single-PEM `verify` overload is deprecated and remains for source compatibility; it does not check the time window or select by serial. Migrate notifications to the asynchronous API.
+
+Notification resource decryption throws redacted `WechatPayDecryptionError` values for an invalid APIv3 key, malformed/truncated ciphertext, invalid nonce, authentication failure, or non-UTF8 plaintext. It never substitutes an empty plaintext. Verify the notification before decrypting or processing it.
 
 ## Refresh and authenticated caching
 
@@ -67,7 +70,7 @@ new trust anchor.
 
 The Codable `WechatPayPlatformCertificateEnvelope` holds the original encrypted
 body and its signature headers. Persist that envelope atomically under the
-merchant scope. Re-read it through `verifyCachedEnvelope` or
+merchant scope. A trusted seed PEM provisioned by an operator is configuration, not an authenticated cache; parsing a PEM never establishes its provenance. Re-read cached envelopes through `verifyCachedEnvelope` or
 `verifyCachedEnvelopeBundle`; corrupt data, a different APIv3 key, altered
 metadata, and unknown public-key IDs fail validation. Reject a conflicting
 certificate under a previously trusted serial before committing a cache update.
@@ -80,8 +83,7 @@ validation still rejects an expired certificate.
 `refresh()` supports startup and periodic refresh. Concurrent unknown-certificate
 requests share a refresh, and attempts have a cooldown (60 seconds by default).
 A new response does not evict unexpired old certificates merely because it omits
-them. Download or persistence failure retains valid old material. Bound any
-custom fetch/persistence closures; do not return unverified certificates. A
+them. Download failure retains valid old material. If a custom refresh closure persists an authenticated envelope before returning certificates, a persistence error rejects that refresh and retains old certificates; this is a deliberate caller policy rather than a built-in plaintext cache. Bound any custom refresh/persistence work; do not return unverified certificates. A
 public-key-only configuration need not call the certificate endpoint.
 
 ## Compatibility and validation
@@ -101,4 +103,5 @@ API, real transaction, database, or real merchant key is needed.
 
 - [Official automatic certificate service](https://github.com/wechatpay-apiv3/wechatpay-java/blob/main/core/src/main/java/com/wechat/pay/java/core/certificate/AutoCertificateService.java)
 - [Official certificate downloader](https://github.com/wechatpay-apiv3/wechatpay-java/blob/main/core/src/main/java/com/wechat/pay/java/core/certificate/CertificateDownloader.java)
+- [Official response timestamp validation](https://github.com/wechatpay-apiv3/wechatpay-java/blob/main/core/src/main/java/com/wechat/pay/java/core/auth/WechatPay2Validator.java)
 - [Official public-key configuration](https://github.com/wechatpay-apiv3/wechatpay-java/blob/main/core/src/main/java/com/wechat/pay/java/core/RSAPublicKeyConfig.java)

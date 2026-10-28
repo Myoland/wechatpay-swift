@@ -16,5 +16,6 @@ DerivedData/
 !Tests/wechatpay-swiftTests/Fixtures/platform-b.pem
 !Tests/wechatpay-swiftTests/Fixtures/platform-b.key.pem
 !Tests/wechatpay-swiftTests/Fixtures/platform-b.public.pem
+!Tests/wechatpay-swiftTests/Fixtures/platform-b.pkcs1.public.pem
 !Tests/wechatpay-swiftTests/Fixtures/platform-conflict.pem
 docker-compose.yml

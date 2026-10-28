@@ -113,15 +113,12 @@ public struct WechatPayPlatformCertificateDownloader: Sendable {
     }
 
     private func verify(_ envelope: WechatPayPlatformCertificateEnvelope, requireFreshTimestamp: Bool) throws -> [WechatPayPlatformCertificate] {
-        guard envelope.body.count <= 1024 * 1024, apiV3Secret.utf8.count == 32,
-              let signedTimestamp = Int64(envelope.timestamp), signedTimestamp > 0 else {
+        guard envelope.body.count <= 1024 * 1024, apiV3Secret.utf8.count == 32 else {
             throw WechatPayPlatformCertificateError.invalidResponse
         }
-        let signedAt = Date(timeIntervalSince1970: TimeInterval(signedTimestamp))
-        let age = clock().timeIntervalSince(signedAt)
-        guard age >= -300, !requireFreshTimestamp || age <= 300 else {
-            throw WechatPayPlatformCertificateError.invalidResponse
-        }
+        let signedAt: Date
+        do { signedAt = try WechatPaySignatureValidator.validatedTimestamp(envelope.timestamp, now: clock(), requireFresh: requireFreshTimestamp) }
+        catch { throw WechatPayPlatformCertificateError.invalidResponse }
         let serial = try WechatPayVerificationKey.normalizedIdentifier(envelope.serialNumber)
         let publicKey: TrustedWechatPublicKey?
         if serial.hasPrefix("PUB_KEY_ID_") {
@@ -153,22 +150,13 @@ public struct WechatPayPlatformCertificateDownloader: Sendable {
         var certificates: [String: WechatPayPlatformCertificate] = [:]
         for entry in payload.data {
             let encrypted = entry.encryptCertificate
-            guard encrypted.algorithm == "AEAD_AES_256_GCM",
-                  let ciphertext = Data(base64Encoded: encrypted.ciphertext), ciphertext.count >= 16 else {
+            guard encrypted.algorithm == "AEAD_AES_256_GCM" else {
                 throw WechatPayPlatformCertificateError.invalidEncryptedCertificate
             }
             let pem: String
             do {
-                let nonce = try AES.GCM.Nonce(data: Data(encrypted.nonce.utf8))
-                let box = try AES.GCM.SealedBox(
-                    nonce: nonce, ciphertext: ciphertext.dropLast(16), tag: ciphertext.suffix(16))
-                let bytes = try AES.GCM.open(
-                    box, using: SymmetricKey(data: Data(apiV3Secret.utf8)),
-                    authenticating: Data(encrypted.associatedData.utf8))
-                guard let decoded = String(data: bytes, encoding: .utf8) else {
-                    throw WechatPayPlatformCertificateError.invalidEncryptedCertificate
-                }
-                pem = decoded
+                pem = try WechatPayAEAD.decrypt(ciphertext: encrypted.ciphertext, nonce: encrypted.nonce,
+                                                associatedData: encrypted.associatedData, apiV3Secret: apiV3Secret)
             } catch { throw WechatPayPlatformCertificateError.invalidEncryptedCertificate }
             let certificate = try WechatPayPlatformCertificate(pem: pem, expectedSerialNumber: entry.serialNo)
             guard abs(certificate.notValidBefore.timeIntervalSince(entry.effectiveTime)) < 0.001,
