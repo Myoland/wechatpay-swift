@@ -30,6 +30,7 @@ let package = Package(
         ),
         .testTarget(
             name: "wechatpay-swiftTests",
-            dependencies: ["WechatPaySwift"]),
+            dependencies: ["WechatPaySwift"],
+            resources: [.copy("Fixtures")]),
     ]
 )
