@@ -104,6 +104,7 @@ public class WechatPay {
                 mchid: String,
                 serialNo: String,
                 certificateProvider: any WechatPayPlatformCertificateProvider,
+                responsePublicKey: TrustedWechatPublicKey? = nil,
                 clock: @escaping @Sendable () -> Date = { Date() }) throws {
         self.apiV3Secret = apiV3Secret
         self.certificateContent = certificateContent
@@ -113,7 +114,8 @@ public class WechatPay {
         self.decoder.dateDecodingStrategy = .iso8601
         self.client = WechatPay.Client(
             httpClient: HTTPClient(eventLoopGroupProvider: .singleton),
-            requestInterceptor: WechatPayRequestInterceptor(mchid: mchid, serialNo: serialNo, certificateContent: certificateContent),
+            requestInterceptor: WechatPayRequestInterceptor(mchid: mchid, serialNo: serialNo, certificateContent: certificateContent,
+                                                           responsePublicKey: responsePublicKey),
             validator: WechatPaySignatureValidator(certificateProvider: certificateProvider, clock: clock))
     }
 
@@ -126,6 +128,7 @@ public class WechatPay {
                 serialNo: String,
                 certificateProvider: any WechatPayPlatformCertificateProvider,
                 transport: any WechatPayTransport,
+                responsePublicKey: TrustedWechatPublicKey? = nil,
                 clock: @escaping @Sendable () -> Date = { Date() }) throws {
         self.apiV3Secret = apiV3Secret
         self.certificateContent = certificateContent
@@ -135,7 +138,8 @@ public class WechatPay {
         self.decoder.dateDecodingStrategy = .iso8601
         self.client = WechatPay.Client(
             transport: transport,
-            requestInterceptor: WechatPayRequestInterceptor(mchid: mchid, serialNo: serialNo, certificateContent: certificateContent),
+            requestInterceptor: WechatPayRequestInterceptor(mchid: mchid, serialNo: serialNo, certificateContent: certificateContent,
+                                                           responsePublicKey: responsePublicKey),
             validator: WechatPaySignatureValidator(certificateProvider: certificateProvider, clock: clock))
     }
 
@@ -144,9 +148,11 @@ public class WechatPay {
                             certificateProvider: any WechatPayPlatformCertificateProvider,
                             mchid: String,
                             serialNo: String,
+                            responsePublicKey: TrustedWechatPublicKey? = nil,
                             clock: @escaping @Sendable () -> Date = { Date() }) throws {
         try self.init(apiV3Secret: apiV3Secret, certificateContent: certificateContent,
-                      mchid: mchid, serialNo: serialNo, certificateProvider: certificateProvider, clock: clock)
+                      mchid: mchid, serialNo: serialNo, certificateProvider: certificateProvider,
+                      responsePublicKey: responsePublicKey, clock: clock)
     }
 
     public func verifyNotification(serialNumber: String, timestamp: String, nonce: String, body: String, signature: String) async throws -> Bool {

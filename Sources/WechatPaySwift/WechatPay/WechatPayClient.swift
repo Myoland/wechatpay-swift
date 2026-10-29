@@ -40,6 +40,7 @@ extension WechatPay {
 
         /// Signs and sends one request. The response is NOT verified here.
         func exchange(_ url: String, method: HTTPMethod, body: Data?) async throws -> WechatPayTransportResponse {
+            try await validator.validateResponsePublicKey(requestInterceptor.responsePublicKey)
             var request = HTTPClientRequest(url: url)
             request.method = method
             if let body {

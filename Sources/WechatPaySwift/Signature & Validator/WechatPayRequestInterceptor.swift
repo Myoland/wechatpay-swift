@@ -27,11 +27,14 @@ struct WechatPayRequestInterceptor {
     private let mchid: String
     private let serialNo: String
     private let certificateContent: String
+    let responsePublicKey: TrustedWechatPublicKey?
     
-    init(mchid: String, serialNo: String, certificateContent: String) {
+    init(mchid: String, serialNo: String, certificateContent: String,
+         responsePublicKey: TrustedWechatPublicKey? = nil) {
         self.mchid = mchid
         self.serialNo = serialNo
         self.certificateContent = certificateContent
+        self.responsePublicKey = responsePublicKey
     }
     
     func adapt(urlRequest: inout HTTPClientRequest) async throws {
@@ -50,6 +53,11 @@ struct WechatPayRequestInterceptor {
         urlRequest.headers.replaceOrAdd(name: "Accept", value: "application/json")
         urlRequest.headers.replaceOrAdd(name: "User-Agent", value: "WechatPay")
         urlRequest.headers.replaceOrAdd(name: "Accept-Language", value: "zh-CN")
+        // Select WeChat's response signing key during the merchant's migration.
+        // Authorization.serial_no above still identifies the merchant signing certificate.
+        if let responsePublicKey {
+            urlRequest.headers.replaceOrAdd(name: "Wechatpay-Serial", value: responsePublicKey.id)
+        }
     }
 }
 

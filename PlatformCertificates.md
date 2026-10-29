@@ -33,6 +33,23 @@ The new `WechatPay` initializer retains the original merchant arguments and adds
 `wxCertificateContent` when this provider is supplied; it does not need a seed
 certificate or a certificate refresh closure. All `WechatPay` constructors and the validator accept a trailing `clock:` closure (default: `Date()`). Use the same clock for the store and client.
 
+## Select public-key responses during migration
+
+Pass `responsePublicKey:` to the provider-based `WechatPay` initializer to send
+that trusted key's ID in the outgoing `Wechatpay-Serial` header. Add the same
+key to the provider's `publicKeys:` first. A missing key or a different PEM under
+the same ID rejects the request before transport. The default `nil` preserves
+the existing certificate request behavior. The merchant certificate serial in
+`Authorization.serial_no` remains unchanged.
+
+During a merchant's migration, retain the still-valid platform certificates in
+the provider as well. Responses and notifications select their verifier from
+their own `Wechatpay-Serial`, independently of the requested response key. Only
+the merchant platform's completed migration permits removing the old platform
+certificates. This SDK option does not start or confirm that migration.
+
+See the [official migration instructions](https://pay.wechatpay.cn/doc/v3/merchant/4012154180).
+
 ## Notification and response validation
 
 Call `verifyNotification(serialNumber:timestamp:nonce:body:signature:)` and pass

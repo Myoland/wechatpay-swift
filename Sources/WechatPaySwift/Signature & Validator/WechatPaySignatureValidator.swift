@@ -24,6 +24,16 @@ public struct WechatPaySignatureValidator: Sendable {
         self.clock = clock
     }
 
+    /// Refuse a response-key selection that this client's verifier cannot authenticate.
+    /// This lookup happens before sending, and cannot learn trust from the response.
+    func validateResponsePublicKey(_ selected: TrustedWechatPublicKey?) async throws {
+        guard let selected else { return }
+        guard case let .publicKey(trusted) = try await provider.verificationKey(for: selected.id),
+              trusted.id == selected.id, trusted.pem == selected.pem else {
+            throw WechatPayPlatformCertificateError.invalidPublicKey
+        }
+    }
+
     /// Legacy synchronous verification retained for source compatibility. New notification
     /// integrations must use the asynchronous serial-selecting overload below.
     @available(*, deprecated, message: "Use verify(serialNumber:timestamp:nonce:body:signature:) or WechatPay.verifyNotification for rotation-aware verification.")
