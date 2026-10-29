@@ -22,7 +22,7 @@ extension WechatPay {
         let requestInterceptor: WechatPayRequestInterceptor
         var validator: WechatPaySignatureValidator
         
-        func request<T: Codable>(_ url: String, method: HTTPMethod, decoder: JSONDecoder? = nil, data: Codable? = nil, validate: Bool = true) async throws -> T {
+        func request<T: Codable>(_ url: String, method: HTTPMethod, decoder: JSONDecoder? = nil, data: Codable? = nil) async throws -> T {
             var request = HTTPClientRequest(url: url)
             request.method = method
             
@@ -39,9 +39,7 @@ extension WechatPay {
                 
                 let bodyBuffer = try await response.body.collect(upTo: 1024*1024)
                 
-                if (validate) {
-                    try await validator.validate(response: response, body: String(buffer: bodyBuffer))
-                }
+                try await validator.validate(response: response, body: String(buffer: bodyBuffer))
                 
                 return try (decoder ?? JSONDecoder()).decode(T.self, from: bodyBuffer)
             } else {
