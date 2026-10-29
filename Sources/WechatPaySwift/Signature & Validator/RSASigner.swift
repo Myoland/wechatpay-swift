@@ -10,11 +10,11 @@ struct RSASigner {
     /// - Parameter text: 明文
     /// - Parameter privateKeyPem: RSA PrivateKey Pem
     static func sign(text: String, privateKeyPem: String) -> String? {
-        let privateKey = try! RSAKey.private(pem: privateKeyPem)
+        guard let privateKey = try? RSAKey.private(pem: privateKeyPem) else { return nil }
         
         let signer = JWTSigner.rs256(key: privateKey)
         
-        let data = try! signer.algorithm.sign(text.data(using: .utf8)!)
+        guard let data = try? signer.algorithm.sign(Data(text.utf8)) else { return nil }
         
         return Data(data).base64EncodedString()
     }

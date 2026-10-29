@@ -1,57 +1,118 @@
-//
-//  File.swift
-//
-//
-//  Created by kevinzhow on 2022/5/28.
-//
-
 import Foundation
-import JWTKit
 import AsyncHTTPClient
-import NIOCore
+import NIOHTTP1
 
-enum WechatPaySignatureValidatorError: Error {
-    case responseSignatureNotMatch
-    case failedToParseResponse
-}
+public struct WechatPaySignatureValidator: Sendable {
+    public typealias Clock = @Sendable () -> Date
+    private let legacyPEM: String?
+    private let provider: any WechatPayPlatformCertificateProvider
+    private let clock: Clock
 
-public struct WechatPaySignatureValidator {
-    public init(wxCertContent: String) {
-        self.wxCertContent = wxCertContent
+    public init(wxCertContent: String, clock: @escaping Clock = { Date() }) {
+        self.legacyPEM = wxCertContent
+        self.provider = SingleCertificateProvider(pem: wxCertContent, clock: clock)
+        self.clock = clock
     }
-    
-    public init(wxCertPath: String) throws {
-        let wxCertContent = try String(contentsOfFile: wxCertPath)
-        self.init(wxCertContent: wxCertContent)
+
+    public init(wxCertPath: String, clock: @escaping Clock = { Date() }) throws {
+        self.init(wxCertContent: try String(contentsOfFile: wxCertPath), clock: clock)
     }
-    
-    let wxCertContent: String
-    
+
+    public init(certificateProvider: any WechatPayPlatformCertificateProvider, clock: @escaping Clock = { Date() }) {
+        self.legacyPEM = nil
+        self.provider = certificateProvider
+        self.clock = clock
+    }
+
+    /// Refuse a response-key selection that this client's verifier cannot authenticate.
+    /// This lookup happens before sending, and cannot learn trust from the response.
+    func validateResponsePublicKey(_ selected: TrustedWechatPublicKey?) async throws {
+        guard let selected else { return }
+        guard case let .publicKey(trusted) = try await provider.verificationKey(for: selected.id),
+              trusted.id == selected.id, trusted.pem == selected.pem else {
+            throw WechatPayPlatformCertificateError.invalidPublicKey
+        }
+    }
+
+    /// Legacy synchronous verification retained for source compatibility. New notification
+    /// integrations must use the asynchronous serial-selecting overload below.
+    @available(*, deprecated, message: "Use verify(serialNumber:timestamp:nonce:body:signature:) or WechatPay.verifyNotification for rotation-aware verification.")
     public func verify(timestamp: String, nonce: String, body: String, signature: String) -> Bool {
-        let message =
-        """
-        \(timestamp)\n\(nonce)\n\(body)\n
-        """
-        
-        if RSASigner.verify(signature: signature, message: message, with: wxCertContent) {
-            return true
-        } else {
+        guard let legacyPEM else { return false }
+        return RSASigner.verify(signature: signature, message: "\(timestamp)\n\(nonce)\n\(body)\n", with: legacyPEM)
+    }
+
+    public func verify(serialNumber: String, timestamp: String, nonce: String, body: String, signature: String) async throws -> Bool {
+        // Reject stale/malformed messages before key lookup can trigger certificate refresh.
+        _ = try Self.validatedTimestamp(timestamp, now: clock(), requireFresh: true)
+        guard let decoded = Data(base64Encoded: signature), !decoded.isEmpty else {
             return false
         }
+        let identifier = try WechatPayVerificationKey.normalizedIdentifier(serialNumber)
+        let key = try await provider.verificationKey(for: identifier)
+        guard key.identifier == identifier else { throw WechatPayPlatformCertificateError.serialNumberMismatch }
+        return key.verify(signature: signature, message: "\(timestamp)\n\(nonce)\n\(body)\n")
     }
-    
-    public func validate(response: AsyncHTTPClient.HTTPClientResponse, body: String) async throws {
-        
-        guard let timestamp = response.headers.first(name: "Wechatpay-Timestamp"),
-              let nonce = response.headers.first(name: "Wechatpay-Nonce"),
-              let signature = response.headers.first(name: "Wechatpay-Signature") else {
-            throw WechatPaySignatureValidatorError.failedToParseResponse
+
+    static func validatedTimestamp(_ timestamp: String, now: Date, requireFresh: Bool) throws -> Date {
+        guard !timestamp.isEmpty, timestamp.utf8.count <= 19,
+              timestamp.utf8.allSatisfy({ (48...57).contains($0) }),
+              let seconds = Int64(timestamp), seconds > 0,
+              now.timeIntervalSince1970.isFinite else {
+            throw WechatPayPlatformCertificateError.invalidTimestamp
         }
-        
-        if verify(timestamp: timestamp, nonce: nonce, body: body, signature: signature) {
-            return
-        } else {
-            throw WechatPaySignatureValidatorError.responseSignatureNotMatch
+        let signedAt = Date(timeIntervalSince1970: TimeInterval(seconds))
+        let age = now.timeIntervalSince(signedAt)
+        // The official Java validator rejects an absolute age of five minutes or more.
+        guard age > -300, !requireFresh || age < 300 else {
+            throw WechatPayPlatformCertificateError.invalidTimestamp
         }
+        return signedAt
+    }
+
+    public func validate(response: HTTPClientResponse, body: String) async throws {
+        try await validate(headers: response.headers, body: body)
+    }
+
+    /// Verifies a provider response from its raw headers and exact body text.
+    public func validate(headers responseHeaders: HTTPHeaders, body: String) async throws {
+        let headers = try Self.signatureHeaders(responseHeaders)
+        guard try await verify(
+            serialNumber: headers.serialNumber, timestamp: headers.timestamp,
+            nonce: headers.nonce, body: body, signature: headers.signature) else {
+            throw WechatPayPlatformCertificateError.invalidSignature
+        }
+    }
+
+    static func signatureHeaders(_ headers: HTTPHeaders) throws -> SignatureHeaders {
+        func single(_ name: String) throws -> String {
+            let values = headers[name]
+            guard values.count == 1, let value = values.first, !value.isEmpty else {
+                throw WechatPayPlatformCertificateError.missingSignatureHeaders
+            }
+            return value
+        }
+        return try SignatureHeaders(
+            serialNumber: single("Wechatpay-Serial"), timestamp: single("Wechatpay-Timestamp"),
+            nonce: single("Wechatpay-Nonce"), signature: single("Wechatpay-Signature"))
+    }
+
+    struct SignatureHeaders {
+        let serialNumber: String
+        let timestamp: String
+        let nonce: String
+        let signature: String
+    }
+}
+
+private struct SingleCertificateProvider: WechatPayPlatformCertificateProvider {
+    let pem: String
+    let clock: WechatPaySignatureValidator.Clock
+    func certificate(for serialNumber: String) async throws -> WechatPayPlatformCertificate {
+        let certificate = try WechatPayPlatformCertificate(pem: pem, expectedSerialNumber: serialNumber)
+        guard certificate.isValid(at: clock()) else {
+            throw WechatPayPlatformCertificateError.certificateNotCurrentlyValid
+        }
+        return certificate
     }
 }

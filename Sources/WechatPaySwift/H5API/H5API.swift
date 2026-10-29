@@ -64,7 +64,7 @@ extension WechatPay {
             
             let json = try self.wechatPay.decodeCiphertext(ciphertext: notification.resource.ciphertext, nonce: notification.resource.nonce, tag: notification.resource.associatedData)
             
-            return try self.wechatPay.decoder.decode(T.self, from: json.data(using: .utf8)!)
+            return try self.wechatPay.decoder.decode(T.self, from: Data(json.utf8))
         }
     }
 }
