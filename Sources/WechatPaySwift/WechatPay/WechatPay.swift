@@ -112,6 +112,28 @@ public class WechatPay {
             validator: WechatPaySignatureValidator(certificateProvider: certificateProvider, clock: clock))
     }
 
+    /// Uses `transport` instead of the default AsyncHTTPClient transport. Requests are still
+    /// signed by the merchant interceptor and 200 responses are still verified against
+    /// `certificateProvider`; intended for offline tests with synthetic keys.
+    public init(apiV3Secret: String,
+                certificateContent: String,
+                mchid: String,
+                serialNo: String,
+                certificateProvider: any WechatPayPlatformCertificateProvider,
+                transport: any WechatPayTransport,
+                clock: @escaping @Sendable () -> Date = { Date() }) throws {
+        self.apiV3Secret = apiV3Secret
+        self.certificateContent = certificateContent
+        self.wxCertificateContent = ""
+        self.mchid = mchid
+        self.serialNo = serialNo
+        self.decoder.dateDecodingStrategy = .iso8601
+        self.client = WechatPay.Client(
+            transport: transport,
+            requestInterceptor: WechatPayRequestInterceptor(mchid: mchid, serialNo: serialNo, certificateContent: certificateContent),
+            validator: WechatPaySignatureValidator(certificateProvider: certificateProvider, clock: clock))
+    }
+
     public convenience init(apiV3Secret: String,
                             certificateContent: String,
                             certificateProvider: any WechatPayPlatformCertificateProvider,
@@ -128,7 +150,7 @@ public class WechatPay {
     
     deinit {
         // A request-scoped client can be released on a NIO event loop. Never block it.
-        self.client.httpClient.shutdown { _ in }
+        self.client.httpClient?.shutdown { _ in }
     }
 }
 

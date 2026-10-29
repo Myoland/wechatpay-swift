@@ -61,7 +61,12 @@ public struct WechatPaySignatureValidator: Sendable {
     }
 
     public func validate(response: HTTPClientResponse, body: String) async throws {
-        let headers = try Self.signatureHeaders(response.headers)
+        try await validate(headers: response.headers, body: body)
+    }
+
+    /// Verifies a provider response from its raw headers and exact body text.
+    public func validate(headers responseHeaders: HTTPHeaders, body: String) async throws {
+        let headers = try Self.signatureHeaders(responseHeaders)
         guard try await verify(
             serialNumber: headers.serialNumber, timestamp: headers.timestamp,
             nonce: headers.nonce, body: body, signature: headers.signature) else {
