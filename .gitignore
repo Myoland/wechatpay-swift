@@ -10,3 +10,11 @@ DerivedData/
 .swiftpm
 *.pem
 docker-compose.yml
+
+# Synthetic offline request-signing fixtures only.
+!Tests/wechatpay-swiftTests/Fixtures/test-merchant.key.pem
+!Tests/wechatpay-swiftTests/Fixtures/test-merchant.public.pem
+
+# Additional synthetic offline verifier fixtures only.
+!Tests/wechatpay-swiftTests/Fixtures/test-verify-platform.pem
+!Tests/wechatpay-swiftTests/Fixtures/test-verify-platform.key.pem

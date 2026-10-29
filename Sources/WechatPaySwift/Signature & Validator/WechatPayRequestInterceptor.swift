@@ -11,6 +11,10 @@ import JWTKit
 import AsyncHTTPClient
 import NIOHTTP1
 
+public enum WechatPayRequestSigningError: Error, Equatable {
+    case invalidURL
+}
+
 enum WechatPayRequestInterceptorError: Error {
     case invalidCert
     case failedToParseBody
@@ -52,6 +56,9 @@ struct WechatPayRequestInterceptor {
 extension HTTPClientRequest {
     func genSign(nonceStr: String, timestamp: Int, privateKeyPem: String) async throws -> String {
         let urlRequest = self
+        guard let url = URL(string: urlRequest.url) else {
+            throw WechatPayRequestSigningError.invalidURL
+        }
         
         var body: String {
             get async throws {
@@ -70,7 +77,7 @@ extension HTTPClientRequest {
         
         let message =
         """
-        \(urlRequest.method.rawValue)\n\(URL(string: urlRequest.url)!.pathWithQuery)\n\(timestamp)\n\(nonceStr)\n\(try await body)\n
+        \(urlRequest.method.rawValue)\n\(url.pathWithQuery)\n\(timestamp)\n\(nonceStr)\n\(try await body)\n
         """
         
         print(message)

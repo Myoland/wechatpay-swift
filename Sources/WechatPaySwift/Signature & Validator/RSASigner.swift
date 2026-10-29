@@ -26,13 +26,15 @@ struct RSASigner {
     /// - Parameter pem: 证书
     static func verify(signature: String, message: String, with pem: String) -> Bool {
         
-        let ceryKey = try! RSAKey.certificate(pem: pem)
-        
-        let signer = JWTSigner.rs256(key: ceryKey)
+        guard let signatureData = Data(base64Encoded: signature) else {
+            return false
+        }
 
-        if try! signer.algorithm.verify(Data(base64Encoded: signature)!, signs: message.data(using: .utf8)!) {
-            return true
-        } else {
+        do {
+            let certKey = try RSAKey.certificate(pem: pem)
+            let signer = JWTSigner.rs256(key: certKey)
+            return try signer.algorithm.verify(signatureData, signs: Data(message.utf8))
+        } catch {
             return false
         }
     }
